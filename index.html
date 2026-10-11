@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Modern Multitasking Calculator</title>
+<style>
+*{box-sizing:border-box}
+body{
+  margin:0;min-height:100vh;display:flex;justify-content:center;
+  align-items:center;padding:20px;font-family:Arial,sans-serif;
+  background:linear-gradient(135deg,#101827,#263b63);color:white;
+}
+.app{width:100%;max-width:390px}
+h1{text-align:center;font-size:25px}
+.card{background:#172338;padding:20px;border-radius:24px;
+  box-shadow:0 15px 45px #0005}
+.top{display:flex;gap:8px;margin-bottom:12px}
+button,select{cursor:pointer;border:0;border-radius:12px;
+  padding:12px;background:#2c3e5b;color:white;font-size:15px}
+.top button{flex:1}
+#display{width:100%;height:75px;border:0;border-radius:14px;
+  background:#0c1423;color:#fff;text-align:right;font-size:30px;
+  padding:15px;margin-bottom:14px}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}
+.grid button{min-height:52px;font-size:19px}
+.op{background:#315b91}
+.equal{background:#08a879}
+.clear{background:#bc4455}
+#history{font-size:14px;max-height:110px;overflow:auto;margin-top:12px}
+#history p{padding:8px;background:#24344d;border-radius:8px}
+.note{font-size:12px;color:#b9c6d9;text-align:center}
+body.light{background:#e7edf7;color:#152238}
+body.light .card{background:white}
+body.light #display{background:#edf1f7;color:#152238}
+body.light button{background:#dce5f2;color:#152238}
+body.light .equal{background:#08a879;color:white}
+body.light .clear{background:#bc4455;color:white}
+@media(max-width:360px){.card{padding:12px}.grid{gap:6px}}
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>⚡ Smart Calculator</h1>
+  <div class="card">
+    <div class="top">
+      <button id="theme">🌙 Theme</button>
+      <button id="copy">📋 Copy</button>
+      <button id="showHistory">🕘 History</button>
+    </div>
+
+    <input id="display" value="0" aria-label="Calculator display"
+      inputmode="decimal" autocomplete="off" readonly>
+
+    <div class="grid" id="keys">
+      <button class="clear" data-action="clear">AC</button>
+      <button data-action="back">⌫</button>
+      <button data-value="%">%</button>
+      <button class="op" data-value="/">÷</button>
+
+      <button data-value="sin(">sin</button>
+      <button data-value="cos(">cos</button>
+      <button data-value="tan(">tan</button>
+      <button class="op" data-value="*">×</button>
+
+      <button data-value="log(">log</button>
+      <button data-value="ln(">ln</button>
+      <button data-value="sqrt(">√</button>
+      <button class="op" data-value="-">−</button>
+
+      <button data-value="7">7</button>
+      <button data-value="8">8</button>
+      <button data-value="9">9</button>
+      <button class="op" data-value="+">+</button>
+
+      <button data-value="4">4</button>
+      <button data-value="5">5</button>
+      <button data-value="6">6</button>
+      <button data-value="^">xʸ</button>
+
+      <button data-value="1">1</button>
+      <button data-value="2">2</button>
+      <button data-value="3">3</button>
+      <button data-value="(">(</button>
+
+      <button data-value="0">0</button>
+      <button data-value=".">.</button>
+      <button data-value=")">)</button>
+      <button class="equal" data-action="equals">=</button>
+
+      <button data-value="pi">π</button>
+      <button data-value="e">e</button>
+      <button data-value="ans">Ans</button>
+      <button data-action="sign">±</button>
+    </div>
+
+    <div id="history" hidden>
+      <strong>Calculation History</strong>
+      <div id="historyItems"></div>
+      <button id="clearHistory">Clear History</button>
+    </div>
+  </div>
+  <p class="note">Scientific Calculator • DEG mode • History is temporary</p>
+</div>
+
+<script>
+const display=document.getElementById('display');
+const historyBox=document.getElementById('history');
+const historyItems=document.getElementById('historyItems');
+let expression='',answer=0,history=[];
+
+function render(){display.value=expression||'0'}
+
+function tokenize(s){
+  const tokens=[];
+  const re=/\s*(?:(\d+(?:\.\d*)?|\.\d+)(?:([eE][+-]?\d+))?|([a-zA-Z]+)|(.) )/y;
+  let i=0;
+  while(i<s.length){
+    if(/\s/.test(s[i])){i++;continue}
+    const rest=s.slice(i);
+    const m=rest.match(/^(\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?/);
+    if(m){tokens.push({type:'num',value:Number(m[0])});i+=m[0].length;continue}
+    const name=rest.match(/^[a-zA-Z]+/);
+    if(name){tokens.push({type:'name',value:name[0]});i+=name[0].length;continue}
+    if('+-*/^()%'.includes(s[i])){tokens.push({type:s[i],value:s[i]});i++;continue}
+    throw Error('Invalid character');
+  }
+  return tokens;
+}
+
+function evaluate(source){
+  let t=tokenize(source),p=0;
+  const peek=()=>t[p];
+  const take=()=>t[p++];
+  function primary(){
+    let x=peek();
+    if(!x)throw Error('Incomplete expression');
+    if(x.type==='num'){take();return x.value}
+    if(x.type==='+'){take();return primary()}
+    if(x.type==='-'){take();return -primary()}
+    if(x.type==='('){
+      take();let v=add();
+      if(!peek()||take().type!==')')throw Error('Missing )');
+      return v;
+    }
+    if(x.type==='name'){
+      take();
+      if(x.value==='pi')return Math.PI;
+      if(x.value==='e')return Math.E;
+      if(x.value==='ans')return answer;
+      if(!['sin','cos','tan','log','ln','sqrt'].includes(x.value))
+        throw Error('Unknown function');
+      if(!peek()||take().type!=='(')throw Error('Use function(...)');
+      let v=add();
+      if(!peek()||take().type!==')')throw Error('Missing )');
+      if(x.value==='sin')return Math.sin(v*Math.PI/180);
+      if(x.value==='cos')return Math.cos(v*Math.PI/180);
+      if(x.value==='tan'){
+        if(Math.abs(Math.cos(v*Math.PI/180))<1e-12)throw Error('Undefined');
+        return Math.tan(v*Math.PI/180);
+      }
+      if(x.value==='log'){if(v<=0)throw Error('log requires positive number');return Math.log10(v)}
+      if(x.value==='ln'){if(v<=0)throw Error('ln requires positive number');return Math.log(v)}
+      if(x.value==='sqrt'){if(v<0)throw Error('Invalid square root');return Math.sqrt(v)}
+    }
+    throw Error('Invalid expression');
+  }
+  function power(){
+    let a=primary();
+    if(peek()&&peek().type==='^'){take();a=Math.pow(a,power())}
+    return a;
+  }
+  function percent(){
+    let v=power();
+    while(peek()&&peek().type==='%'){take();v/=100}
+    return v;
+  }
+  function mul(){
+    let a=percent();
+    while(peek()&&['*','/'].includes(peek().type)){
+      let op=take().type,b=percent();
+      if(op==='/'&&b===0)throw Error('Cannot divide by zero');
+      a=op==='*'?a*b:a/b;
+    }
+    return a;
+  }
+  function add(){
+    let a=mul();
+    while(peek()&&['+','-'].includes(peek().type)){
+      let op=take().type,b=mul();a=op==='+'?a+b:a-b;
+    }
+    return a;
+  }
+  let result=add();
+  if(p!==t.length)throw Error('Invalid expression');
+  if(!Number.isFinite(result))throw Error('Result out of range');
+  return result;
+}
+
+document.getElementById('keys').addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b)return;
+  if(b.dataset.action==='clear'){expression='';render();return}
+  if(b.dataset.action==='back'){expression=expression.slice(0,-1);render();return}
+  if(b.dataset.action==='sign'){
+    expression=expression?'-('+expression+')':'-';
+    render();return;
+  }
+  if(b.dataset.action==='equals'){
+    if(!expression)return;
+    try{
+      const result=evaluate(expression);
+      history.unshift(expression+' = '+result);
+      history=history.slice(0,50);
+      answer=result;
+      expression=String(Number(result.toPrecision(12)));
+      historyItems.replaceChildren();
+      history.forEach(item=>{
+        const p=document.createElement('p');p.textContent=item;historyItems.appendChild(p);
+      });
+      render();
+    }catch(err){display.value=err.message}
+    return;
+  }
+  if(b.dataset.value!==undefined){
+    if(display.value!=='0'&&display.value!=='Invalid expression'&&
+       display.value!=='Cannot divide by zero'&&display.value!=='Result out of range'&&
+       display.value!=='Incomplete expression'&&display.value!=='Missing )'&&
+       display.value!=='Undefined'&&display.value!=='Invalid character'&&
+       display.value!=='Unknown function'&&display.value!=='Use function(...)'&&
+       display.value!=='Invalid square root'&&display.value!=='log requires positive number'&&
+       display.value!=='ln requires positive number'){
+      expression+=b.dataset.value;
+    }else{expression=b.dataset.value}
+    render();
+  }
+});
+
+document.getElementById('theme').addEventListener('click',()=>{
+  document.body.classList.toggle('light');
+});
+document.getElementById('copy').addEventListener('click',async()=>{
+  try{
+    await navigator.clipboard.writeText(display.value);
+    document.getElementById('copy').textContent='Copied!';
+    setTimeout(()=>document.getElementById('copy').textContent='📋 Copy',1200);
+  }catch(e){alert('Copy is not available in this browser. Please copy the result manually.')}
+});
+document.getElementById('showHistory').addEventListener('click',()=>{
+  historyBox.hidden=!historyBox.hidden;
+});
+document.getElementById('clearHistory').addEventListener('click',()=>{
+  history=[];historyItems.replaceChildren();
+});
+</script>
+</body>
+</html>
